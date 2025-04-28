@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using CA2.Data;
 using CA2.Models;
 using System.Linq;
+using Microsoft.AspNetCore.Authorization;
 
 namespace CA2.Controllers
 {
@@ -32,7 +33,7 @@ namespace CA2.Controllers
         {
             var player = await _context.Players
                 .Include(p => p.Team)
-                .FirstOrDefaultAsync(p => p.PlayerId == id);
+                .FirstOrDefaultAsync(p => p.Id == id);
 
             if (player == null)
             {
@@ -104,21 +105,118 @@ namespace CA2.Controllers
                 .ToListAsync();
         }
 
+        // GET: api/Players/statistics/{id}
+        [HttpGet("statistics/{id}")]
+        public async Task<ActionResult<PlayerStatistics>> GetPlayerStatistics(int id)
+        {
+            var player = await _context.Players.FindAsync(id);
+            if (player == null)
+            {
+                return NotFound();
+            }
+
+            var statistics = new PlayerStatistics
+            {
+                PlayerId = player.Id,
+                Name = player.Name,
+                GoalsPerGame = player.Appearances > 0 ? (double)player.Goals / player.Appearances : 0,
+                AssistsPerGame = player.Appearances > 0 ? (double)player.Assists / player.Appearances : 0,
+                GoalContributionPerGame = player.Appearances > 0 ? (double)(player.Goals + player.Assists) / player.Appearances : 0,
+                TotalGoalContributions = player.Goals + player.Assists
+            };
+
+            return statistics;
+        }
+
+        // GET: api/Players/top-contributors
+        [HttpGet("top-contributors")]
+        public async Task<ActionResult<IEnumerable<PlayerStatistics>>> GetTopContributors()
+        {
+            var players = await _context.Players
+                .Select(p => new PlayerStatistics
+                {
+                    PlayerId = p.Id,
+                    Name = p.Name,
+                    GoalsPerGame = p.Appearances > 0 ? (double)p.Goals / p.Appearances : 0,
+                    AssistsPerGame = p.Appearances > 0 ? (double)p.Assists / p.Appearances : 0,
+                    GoalContributionPerGame = p.Appearances > 0 ? (double)(p.Goals + p.Assists) / p.Appearances : 0,
+                    TotalGoalContributions = p.Goals + p.Assists
+                })
+                .OrderByDescending(p => p.TotalGoalContributions)
+                .Take(10)
+                .ToListAsync();
+
+            return players;
+        }
+
+        // GET: api/Players/search
+        [HttpGet("search")]
+        public async Task<ActionResult<IEnumerable<Player>>> SearchPlayers(
+            [FromQuery] string? name,
+            [FromQuery] int? minAge,
+            [FromQuery] int? maxAge,
+            [FromQuery] string? position,
+            [FromQuery] string? nationality,
+            [FromQuery] int? minGoals,
+            [FromQuery] int? minAssists)
+        {
+            var query = _context.Players.AsQueryable();
+
+            if (!string.IsNullOrEmpty(name))
+            {
+                query = query.Where(p => p.Name.Contains(name));
+            }
+
+            if (minAge.HasValue)
+            {
+                query = query.Where(p => p.Age >= minAge.Value);
+            }
+
+            if (maxAge.HasValue)
+            {
+                query = query.Where(p => p.Age <= maxAge.Value);
+            }
+
+            if (!string.IsNullOrEmpty(position))
+            {
+                query = query.Where(p => p.Position == position);
+            }
+
+            if (!string.IsNullOrEmpty(nationality))
+            {
+                query = query.Where(p => p.Nationality == nationality);
+            }
+
+            if (minGoals.HasValue)
+            {
+                query = query.Where(p => p.Goals >= minGoals.Value);
+            }
+
+            if (minAssists.HasValue)
+            {
+                query = query.Where(p => p.Assists >= minAssists.Value);
+            }
+
+            return await query.ToListAsync();
+        }
+
         // POST: api/Players
         [HttpPost]
+        [Authorize(Roles = "Admin")]
         public async Task<ActionResult<Player>> PostPlayer(Player player)
         {
             _context.Players.Add(player);
             await _context.SaveChangesAsync();
 
-            return CreatedAtAction("GetPlayer", new { id = player.PlayerId }, player);
+            return CreatedAtAction(nameof(GetPlayer), new { id = player.Id }, player);
         }
 
         // PUT: api/Players/5
         [HttpPut("{id}")]
+        [Authorize(Roles = "Admin")]
         public async Task<IActionResult> PutPlayer(int id, Player player)
         {
-            if (id != player.PlayerId)
+            if (id != player.Id)
             {
                 return BadRequest();
             }
@@ -146,6 +244,7 @@ namespace CA2.Controllers
 
         // DELETE: api/Players/5
         [HttpDelete("{id}")]
+        [Authorize(Roles = "Admin")]
         public async Task<IActionResult> DeletePlayer(int id)
         {
             var player = await _context.Players.FindAsync(id);
@@ -162,7 +261,7 @@ namespace CA2.Controllers
 
         private bool PlayerExists(int id)
         {
-            return _context.Players.Any(e => e.PlayerId == id);
+            return _context.Players.Any(e => e.Id == id);
         }
     }
 } 

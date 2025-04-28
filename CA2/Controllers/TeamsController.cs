@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using CA2.Data;
 using CA2.Models;
 using System.Linq;
+using Microsoft.AspNetCore.Authorization;
 
 namespace CA2.Controllers
 {
@@ -23,14 +24,16 @@ namespace CA2.Controllers
         [HttpGet]
         public async Task<ActionResult<IEnumerable<Team>>> GetTeams()
         {
-            return await _context.Teams.ToListAsync();
+            return await _context.Teams.Include(t => t.Players).ToListAsync();
         }
 
         // GET: api/Teams/5
         [HttpGet("{id}")]
         public async Task<ActionResult<Team>> GetTeam(int id)
         {
-            var team = await _context.Teams.FindAsync(id);
+            var team = await _context.Teams
+                .Include(t => t.Players)
+                .FirstOrDefaultAsync(t => t.Id == id);
 
             if (team == null)
             {
@@ -45,6 +48,7 @@ namespace CA2.Controllers
         public async Task<ActionResult<IEnumerable<Team>>> GetTeamsByLeague(string leagueName)
         {
             return await _context.Teams
+                .Include(t => t.Players)
                 .Where(t => t.League == leagueName)
                 .ToListAsync();
         }
@@ -54,6 +58,7 @@ namespace CA2.Controllers
         public async Task<ActionResult<IEnumerable<Team>>> GetTeamsByCountry(string countryName)
         {
             return await _context.Teams
+                .Include(t => t.Players)
                 .Where(t => t.Country == countryName)
                 .ToListAsync();
         }
@@ -64,7 +69,7 @@ namespace CA2.Controllers
         {
             var team = await _context.Teams
                 .Include(t => t.Players)
-                .FirstOrDefaultAsync(t => t.TeamId == id);
+                .FirstOrDefaultAsync(t => t.Id == id);
 
             if (team == null)
             {
@@ -78,46 +83,124 @@ namespace CA2.Controllers
 
         // GET: api/Teams/{id}/statistics
         [HttpGet("{id}/statistics")]
-        public async Task<ActionResult<object>> GetTeamStatistics(int id)
+        public async Task<ActionResult<TeamStatistics>> GetTeamStatistics(int id)
         {
             var team = await _context.Teams
                 .Include(t => t.Players)
-                .FirstOrDefaultAsync(t => t.TeamId == id);
+                .FirstOrDefaultAsync(t => t.Id == id);
 
             if (team == null)
             {
                 return NotFound();
             }
 
-            var statistics = new
+            var statistics = new TeamStatistics
             {
+                TeamId = team.Id,
+                Name = team.Name,
                 TotalGoals = team.Players.Sum(p => p.Goals),
                 TotalAssists = team.Players.Sum(p => p.Assists),
+                AveragePlayerAge = team.Players.Any() ? team.Players.Average(p => p.Age) : 0,
                 TotalAppearances = team.Players.Sum(p => p.Appearances),
-                AverageAge = team.Players.Average(p => p.Age),
                 PlayerCount = team.Players.Count,
-                TopScorer = team.Players.OrderByDescending(p => p.Goals).FirstOrDefault()?.Name,
-                MostAssists = team.Players.OrderByDescending(p => p.Assists).FirstOrDefault()?.Name
+                GoalsPerGame = team.Players.Sum(p => p.Appearances) > 0 
+                    ? (double)team.Players.Sum(p => p.Goals) / team.Players.Sum(p => p.Appearances) 
+                    : 0
             };
 
             return statistics;
         }
 
+        [HttpGet("league-statistics/{league}")]
+        public async Task<ActionResult<LeagueStatistics>> GetLeagueStatistics(string league)
+        {
+            var teams = await _context.Teams
+                .Include(t => t.Players)
+                .Where(t => t.League == league)
+                .ToListAsync();
+
+            if (!teams.Any())
+            {
+                return NotFound();
+            }
+
+            var statistics = new LeagueStatistics
+            {
+                League = league,
+                TotalTeams = teams.Count,
+                TotalGoals = teams.Sum(t => t.Players.Sum(p => p.Goals)),
+                TotalAssists = teams.Sum(t => t.Players.Sum(p => p.Assists)),
+                AverageTeamAge = teams.Average(t => t.Players.Average(p => p.Age)),
+                TotalPlayers = teams.Sum(t => t.Players.Count),
+                GoalsPerGame = teams.Sum(t => t.Players.Sum(p => p.Appearances)) > 0
+                    ? (double)teams.Sum(t => t.Players.Sum(p => p.Goals)) / teams.Sum(t => t.Players.Sum(p => p.Appearances))
+                    : 0
+            };
+
+            return statistics;
+        }
+
+        [HttpGet("search")]
+        public async Task<ActionResult<IEnumerable<Team>>> SearchTeams(
+            [FromQuery] string? name,
+            [FromQuery] string? league,
+            [FromQuery] string? country,
+            [FromQuery] int? minFoundedYear,
+            [FromQuery] int? maxFoundedYear,
+            [FromQuery] string? manager)
+        {
+            var query = _context.Teams.Include(t => t.Players).AsQueryable();
+
+            if (!string.IsNullOrEmpty(name))
+            {
+                query = query.Where(t => t.Name.Contains(name));
+            }
+
+            if (!string.IsNullOrEmpty(league))
+            {
+                query = query.Where(t => t.League == league);
+            }
+
+            if (!string.IsNullOrEmpty(country))
+            {
+                query = query.Where(t => t.Country == country);
+            }
+
+            if (minFoundedYear.HasValue)
+            {
+                query = query.Where(t => t.FoundedYear >= minFoundedYear.Value);
+            }
+
+            if (maxFoundedYear.HasValue)
+            {
+                query = query.Where(t => t.FoundedYear <= maxFoundedYear.Value);
+            }
+
+            if (!string.IsNullOrEmpty(manager))
+            {
+                query = query.Where(t => t.Manager.Contains(manager));
+            }
+
+            return await query.ToListAsync();
+        }
+
         // POST: api/Teams
         [HttpPost]
+        [Authorize(Roles = "Admin")]
         public async Task<ActionResult<Team>> PostTeam(Team team)
         {
             _context.Teams.Add(team);
             await _context.SaveChangesAsync();
 
-            return CreatedAtAction("GetTeam", new { id = team.TeamId }, team);
+            return CreatedAtAction(nameof(GetTeam), new { id = team.Id }, team);
         }
 
         // PUT: api/Teams/5
         [HttpPut("{id}")]
+        [Authorize(Roles = "Admin")]
         public async Task<IActionResult> PutTeam(int id, Team team)
         {
-            if (id != team.TeamId)
+            if (id != team.Id)
             {
                 return BadRequest();
             }
@@ -145,6 +228,7 @@ namespace CA2.Controllers
 
         // DELETE: api/Teams/5
         [HttpDelete("{id}")]
+        [Authorize(Roles = "Admin")]
         public async Task<IActionResult> DeleteTeam(int id)
         {
             var team = await _context.Teams.FindAsync(id);
@@ -161,7 +245,7 @@ namespace CA2.Controllers
 
         private bool TeamExists(int id)
         {
-            return _context.Teams.Any(e => e.TeamId == id);
+            return _context.Teams.Any(e => e.Id == id);
         }
     }
 } 
