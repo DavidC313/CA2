@@ -1,0 +1,2 @@
+$connectionString = "Server=tcp:caead.database.windows.net,1433;Initial Catalog=FootballDB;User Id=boss;Password=Admin123;Encrypt=True;TrustServerCertificate=False;Connection Timeout=30;"
+dotnet ef database update --connection "$connectionString" 

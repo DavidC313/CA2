@@ -33,7 +33,7 @@ namespace CA2.Controllers
         {
             var player = await _context.Players
                 .Include(p => p.Team)
-                .FirstOrDefaultAsync(p => p.Id == id);
+                .FirstOrDefaultAsync(p => p.PlayerId == id);
 
             if (player == null)
             {
@@ -117,7 +117,7 @@ namespace CA2.Controllers
 
             var statistics = new PlayerStatistics
             {
-                PlayerId = player.Id,
+                PlayerId = player.PlayerId,
                 Name = player.Name,
                 GoalsPerGame = player.Appearances > 0 ? (double)player.Goals / player.Appearances : 0,
                 AssistsPerGame = player.Appearances > 0 ? (double)player.Assists / player.Appearances : 0,
@@ -135,7 +135,7 @@ namespace CA2.Controllers
             var players = await _context.Players
                 .Select(p => new PlayerStatistics
                 {
-                    PlayerId = p.Id,
+                    PlayerId = p.PlayerId,
                     Name = p.Name,
                     GoalsPerGame = p.Appearances > 0 ? (double)p.Goals / p.Appearances : 0,
                     AssistsPerGame = p.Appearances > 0 ? (double)p.Assists / p.Appearances : 0,
@@ -208,7 +208,7 @@ namespace CA2.Controllers
             _context.Players.Add(player);
             await _context.SaveChangesAsync();
 
-            return CreatedAtAction(nameof(GetPlayer), new { id = player.Id }, player);
+            return CreatedAtAction(nameof(GetPlayer), new { id = player.PlayerId }, player);
         }
 
         // PUT: api/Players/5
@@ -216,7 +216,7 @@ namespace CA2.Controllers
         [Authorize(Roles = "Admin")]
         public async Task<IActionResult> PutPlayer(int id, Player player)
         {
-            if (id != player.Id)
+            if (id != player.PlayerId)
             {
                 return BadRequest();
             }
@@ -261,7 +261,7 @@ namespace CA2.Controllers
 
         private bool PlayerExists(int id)
         {
-            return _context.Players.Any(e => e.Id == id);
+            return _context.Players.Any(e => e.PlayerId == id);
         }
     }
 } 

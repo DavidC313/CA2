@@ -14,7 +14,7 @@ namespace CA2.Models
         }
 
         [Key]
-        public int Id { get; set; }
+        public int PlayerId { get; set; }
 
         [Required(ErrorMessage = "Name is required")]
         [StringLength(100, MinimumLength = 2, ErrorMessage = "Name must be between 2 and 100 characters")]
