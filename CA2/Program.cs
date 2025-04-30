@@ -12,6 +12,7 @@ using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.Http.Json;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using System.Threading.RateLimiting;
+using Microsoft.OpenApi.Models;
 
 namespace CA2
 {
@@ -45,9 +46,23 @@ namespace CA2
                         });
                     };
                 });
-            // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
+
+            // Configure Swagger
             builder.Services.AddEndpointsApiExplorer();
-            builder.Services.AddSwaggerGen();
+            builder.Services.AddSwaggerGen(c =>
+            {
+                c.SwaggerDoc("v1", new OpenApiInfo
+                {
+                    Title = "Football API",
+                    Version = "v1",
+                    Description = "API for managing football data"
+                });
+                
+                // Add XML comments
+                var xmlFile = $"{System.Reflection.Assembly.GetExecutingAssembly().GetName().Name}.xml";
+                var xmlPath = Path.Combine(AppContext.BaseDirectory, xmlFile);
+                c.IncludeXmlComments(xmlPath);
+            });
 
             // Add JWT authentication
             builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
@@ -78,7 +93,7 @@ namespace CA2
                 options.AddPolicy("AllowSpecificOrigins",
                     builder =>
                     {
-                        builder.WithOrigins("http://localhost:3000") // Add your frontend URL
+                        builder.WithOrigins("http://localhost:3000")
                                .AllowAnyHeader()
                                .AllowAnyMethod()
                                .AllowCredentials();
@@ -102,7 +117,7 @@ namespace CA2
                 {
                     options.PermitLimit = 100;
                     options.Window = TimeSpan.FromMinutes(1);
-                    options.QueueProcessingOrder = System.Threading.RateLimiting.QueueProcessingOrder.OldestFirst;
+                    options.QueueProcessingOrder = QueueProcessingOrder.OldestFirst;
                     options.QueueLimit = 2;
                 });
             });
@@ -116,36 +131,37 @@ namespace CA2
 
             // Add DbContext
             builder.Services.AddDbContext<FootballContext>(options =>
-                options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
+                options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection"),
+                    sqlServerOptions => sqlServerOptions.EnableRetryOnFailure()));
 
             var app = builder.Build();
 
             // Configure the HTTP request pipeline.
             if (app.Environment.IsDevelopment())
             {
-                app.UseSwagger();
-                app.UseSwaggerUI();
+                app.UseDeveloperExceptionPage();
+            }
+            else
+            {
+                app.UseExceptionHandler("/error");
+                app.UseHsts();
             }
 
+            app.UseSwagger();
+            app.UseSwaggerUI(c =>
+            {
+                c.SwaggerEndpoint("/swagger/v1/swagger.json", "Football API V1");
+                c.RoutePrefix = string.Empty; // Serve Swagger UI at the root
+            });
+
             app.UseHttpsRedirection();
-
-            // Use CORS
             app.UseCors("AllowSpecificOrigins");
-
-            // Use authentication and authorization
             app.UseAuthentication();
             app.UseAuthorization();
-
-            // Use exception handling middleware
             app.UseMiddleware<ExceptionHandlerMiddleware>();
-
-            // Use response caching
             app.UseResponseCaching();
-
-            // Use rate limiting
             app.UseRateLimiter();
 
-            // Add health check endpoints
             app.MapHealthChecks("/health");
             app.MapHealthChecks("/health/detailed", new HealthCheckOptions
             {
@@ -169,12 +185,23 @@ namespace CA2
 
             app.MapControllers();
 
+            // Add default route
+            app.MapGet("/", () => Results.Redirect("/swagger"));
+
             // Seed the database
             using (var scope = app.Services.CreateScope())
             {
                 var services = scope.ServiceProvider;
-                var context = services.GetRequiredService<FootballContext>();
-                DataSeeder.SeedData(context);
+                try
+                {
+                    var context = services.GetRequiredService<FootballContext>();
+                    DataSeeder.SeedData(context);
+                }
+                catch (Exception ex)
+                {
+                    var logger = services.GetRequiredService<ILogger<Program>>();
+                    logger.LogError(ex, "An error occurred while seeding the database.");
+                }
             }
 
             app.Run();
