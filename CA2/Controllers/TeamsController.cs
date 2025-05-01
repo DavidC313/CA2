@@ -186,7 +186,7 @@ namespace CA2.Controllers
 
         // POST: api/Teams
         [HttpPost]
-        [Authorize(Roles = "Admin")]
+        [Authorize(Policy = "AllowAll")]
         public async Task<ActionResult<Team>> PostTeam(Team team)
         {
             _context.Teams.Add(team);
@@ -197,7 +197,7 @@ namespace CA2.Controllers
 
         // PUT: api/Teams/5
         [HttpPut("{id}")]
-        [Authorize(Roles = "Admin")]
+        [Authorize(Policy = "AllowAll")]
         public async Task<IActionResult> PutTeam(int id, Team team)
         {
             if (id != team.TeamId)
@@ -228,7 +228,7 @@ namespace CA2.Controllers
 
         // DELETE: api/Teams/5
         [HttpDelete("{id}")]
-        [Authorize(Roles = "Admin")]
+        [Authorize(Policy = "AllowAll")]
         public async Task<IActionResult> DeleteTeam(int id)
         {
             var team = await _context.Teams.FindAsync(id);

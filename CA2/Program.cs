@@ -88,6 +88,7 @@ namespace CA2
             // Add authorization
             builder.Services.AddAuthorization(options =>
             {
+                options.AddPolicy("AllowAll", policy => policy.RequireAssertion(context => true));
                 options.AddPolicy("AdminOnly", policy => policy.RequireRole("Admin"));
                 options.AddPolicy("UserOnly", policy => policy.RequireRole("User"));
             });
@@ -95,13 +96,12 @@ namespace CA2
             // Add CORS with specific policy
             builder.Services.AddCors(options =>
             {
-                options.AddPolicy("AllowSpecificOrigins",
+                options.AddPolicy("AllowAll",
                     builder =>
                     {
-                        builder.WithOrigins("http://localhost:3000")
+                        builder.AllowAnyOrigin()
                                .AllowAnyHeader()
-                               .AllowAnyMethod()
-                               .AllowCredentials();
+                               .AllowAnyMethod();
                     });
             });
 
@@ -160,7 +160,7 @@ namespace CA2
             });
 
             app.UseHttpsRedirection();
-            app.UseCors("AllowSpecificOrigins");
+            app.UseCors("AllowAll");
             app.UseAuthentication();
             app.UseAuthorization();
             app.UseMiddleware<ExceptionHandlerMiddleware>();
